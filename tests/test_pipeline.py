@@ -56,19 +56,40 @@ def test_load_cases_reports_unknown_names(kg, tmp_path):
         load_cases(path, kg)
 
 
+@pytest.mark.parametrize("seed", [0, 1, 2, 3, 4])
 @pytest.mark.parametrize("pretrain", [True, False])
 @pytest.mark.parametrize("visible", ["bernoulli", "gaussian"])
-def test_dbn_learns_separable_classes(pretrain, visible):
-    rng = np.random.default_rng(0)
+def test_dbn_learns_separable_classes(pretrain, visible, seed):
+    rng = np.random.default_rng(seed)
     y = rng.integers(0, 3, 300)
     X = np.eye(3)[y].repeat(4, axis=1) + rng.normal(0, 0.05, (300, 12))
     if visible == "bernoulli":
         X = X.clip(0, 1)
-    model = DBN((16, 8), visible=visible, pretrain=pretrain, pretrain_epochs=5, finetune_epochs=100, seed=0)
+    model = DBN((16, 8), visible=visible, pretrain=pretrain, pretrain_epochs=5, finetune_epochs=100, seed=seed)
     model.fit(X, y)
     assert (model.predict(X) == y).mean() > 0.95
     assert model.predict_proba(X).shape == (300, 3)
     assert len(model.history_.get("pretrain", [])) == (2 if pretrain else 0)
+    if pretrain:
+        # One entry per RBM, aligned with history_["pretrain"]; only a Bernoulli first layer is tracked.
+        pls = model.history_["pseudo_likelihood"]
+        assert len(pls) == len(model.history_["pretrain"])
+        assert isinstance(pls[0], list) if visible == "bernoulli" else pls[0] is None
+        assert pls[1] is None
+
+
+def test_rbm_pseudo_likelihood():
+    from kgdbn.dbn import RBM
+    import torch
+    rbm_b = RBM(10, 5, visible="bernoulli")
+    v_b = torch.bernoulli(torch.full((20, 10), 0.5))
+    pl = rbm_b.pseudo_likelihood(v_b)
+    assert isinstance(pl, float)
+    assert pl < 0.0
+
+    rbm_g = RBM(10, 5, visible="gaussian")
+    v_g = torch.randn(20, 10)
+    assert rbm_g.pseudo_likelihood(v_g) is None
 
 
 def test_run_end_to_end(cases_csv):

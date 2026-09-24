@@ -1,4 +1,4 @@
-"""Load the rice pest/disease ontology (OWL, RDF/XML) into a knowledge graph."""
+# Load the rice pest/disease ontology (OWL, RDF/XML) into a knowledge graph.
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ class KnowledgeGraph:
         return sorted(o for s, r, o in self.triples if s == subject and r == relation)
 
     def symptom_profiles(self, target_types=("PenyakitPadi", "HamaPadi")) -> dict[str, list[str]]:
-        """Symptoms of every target entity that has at least one symptom."""
+        # Symptoms of every target entity that has at least one symptom.
         profiles = {t: self.objects(t, "memilikiGejala") for t in self.of_type(*target_types)}
         return {t: s for t, s in profiles.items() if s}
 
@@ -67,10 +67,9 @@ class KnowledgeGraph:
 
 
 def load_ontology(path: str | Path) -> KnowledgeGraph:
-    """Parse individuals and their object-property triples.
-
-    Triples that violate SCHEMA or are self-loops are moved to `dropped`.
-    """
+    # Parse individuals and their object-property triples.
+    #
+    # Triples that violate SCHEMA or are self-loops are moved to `dropped`.
     g = rdflib.Graph()
     g.parse(str(path))
 

@@ -61,6 +61,22 @@ Prasyarat: Python 3.10+. Neo4j tidak wajib, karena ontologi dibaca langsung deng
 pip install -r requirements.txt
 ```
 
+### Dukungan Neo4j (Opsional)
+
+Jika ingin mengekspor graf ke Neo4j atau memakai GDS (FastRP / node2vec):
+
+```bash
+pip install neo4j
+```
+
+Konfigurasikan kredensial melalui variabel lingkungan atau file `.env`:
+
+```env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password_anda
+```
+
 ## Penggunaan
 
 Siapkan data kasus nyata di `data/kasus.csv`:

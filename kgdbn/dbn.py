@@ -1,4 +1,4 @@
-"""Deep Belief Network: greedy layer-wise RBM pretraining (CD-k) + supervised fine-tuning."""
+# Deep Belief Network: greedy layer-wise RBM pretraining (CD-k) + supervised fine-tuning.
 
 from __future__ import annotations
 
@@ -11,11 +11,10 @@ import torch.nn.functional as F
 
 
 class RBM(nn.Module):
-    """Restricted Boltzmann Machine with binary hidden units.
-
-    visible="bernoulli" expects inputs in [0, 1]; visible="gaussian" expects
-    standardized inputs (zero mean, unit variance).
-    """
+    # Restricted Boltzmann Machine with binary hidden units.
+    #
+    # visible="bernoulli" expects inputs in [0, 1]; visible="gaussian" expects
+    # standardized inputs (zero mean, unit variance).
 
     def __init__(self, n_visible: int, n_hidden: int, visible: str = "bernoulli"):
         super().__init__()
@@ -40,7 +39,7 @@ class RBM(nn.Module):
         return 0.5 * ((v - self.v_bias) ** 2).sum(1) - hidden
 
     def contrastive_divergence(self, v0, k: int = 1):
-        """Loss whose gradient is the CD-k update, plus the reconstruction error."""
+        # Loss whose gradient is the CD-k update, plus the reconstruction error.
         v = v0
         for _ in range(k):
             h = torch.bernoulli(self.p_h(v))
@@ -49,16 +48,28 @@ class RBM(nn.Module):
         loss = self.free_energy(v0).mean() - self.free_energy(v).mean()
         return loss, F.mse_loss(v, v0).item()
 
+    def pseudo_likelihood(self, v):
+        # Estimate average log pseudo-likelihood per sample for Bernoulli visible.
+        if self.visible != "bernoulli":
+            return None
+        with torch.no_grad():
+            i = torch.randint(0, v.shape[1], (len(v),), device=v.device)
+            v_corrupt = v.clone()
+            v_corrupt.scatter_(1, i.unsqueeze(1), 1.0 - v.gather(1, i.unsqueeze(1)))
+            fe_orig = self.free_energy(v)
+            fe_corrupt = self.free_energy(v_corrupt)
+            pl = -v.shape[1] * F.softplus(fe_orig - fe_corrupt)
+            return pl.mean().item()
+
     def forward(self, v):
         return self.p_h(v)
 
 
 class DBN:
-    """Stacked RBMs whose weights initialize a sigmoid MLP classifier.
-
-    With pretrain=False the same network is trained from random weights, which
-    serves as the "no pretraining" baseline.
-    """
+    # Stacked RBMs whose weights initialize a sigmoid MLP classifier.
+    #
+    # With pretrain=False the same network is trained from random weights, which
+    # serves as the "no pretraining" baseline.
 
     def __init__(
         self,
@@ -67,7 +78,7 @@ class DBN:
         k: int = 1,
         pretrain: bool = True,
         pretrain_epochs: int = 30,
-        pretrain_lr: float = 0.01,
+        pretrain_lr: float | None = None,
         finetune_epochs: int = 200,
         finetune_lr: float = 5e-3,
         batch_size: int = 64,
@@ -112,11 +123,27 @@ class DBN:
     def _pretrain(self, X):
         self.rbms_ = []
         self.history_["pretrain"] = []
+        self.history_["pseudo_likelihood"] = []
         v = X
         for depth, n_hidden in enumerate(self.hidden_layers):
-            rbm = RBM(v.shape[1], n_hidden, self.visible if depth == 0 else "bernoulli").to(self.device)
-            opt = torch.optim.SGD(rbm.parameters(), lr=self.pretrain_lr, momentum=0.9, weight_decay=self.weight_decay)
+            vis = self.visible if depth == 0 else "bernoulli"
+            rbm = RBM(v.shape[1], n_hidden, vis).to(self.device)
+            if self.pretrain_lr is not None:
+                lr = self.pretrain_lr
+            else:
+                # Bernoulli visible units benefit from higher lr (~0.1) than Gaussian (~0.01)
+                lr = 0.01 if vis == "gaussian" else 0.1
+            opt = torch.optim.SGD(rbm.parameters(), lr=lr, momentum=0.9, weight_decay=self.weight_decay)
             errors = []
+
+            # PL hanya bermakna jika input benar-benar biner ({0, 1}).
+            # Layer 0 dengan visible="bernoulli" menerima masukan biner asli.
+            # Layer >= 1 menerima probabilitas kontinu dari rbm(v) layer sebelumnya,
+            # sehingga bit-flip PL tidak bermakna secara matematis dan dilewati (None)
+            # daripada melakukan sampling Bernoulli buatan yang menambah variansi acak.
+            track_pl = (depth == 0 and vis == "bernoulli")
+            pls = [] if track_pl else None
+
             for epoch in range(self.pretrain_epochs):
                 total = 0.0
                 for idx in self._batches(len(v)):
@@ -126,8 +153,11 @@ class DBN:
                     opt.step()
                     total += recon * len(idx)
                 errors.append(total / len(v))
+                if track_pl:
+                    pls.append(rbm.pseudo_likelihood(v))
             self._log(f"RBM {depth + 1} ({v.shape[1]}->{n_hidden}): recon error {errors[0]:.4f} -> {errors[-1]:.4f}")
             self.history_["pretrain"].append(errors)
+            self.history_["pseudo_likelihood"].append(pls)
             self.rbms_.append(rbm)
             with torch.no_grad():
                 v = rbm(v)

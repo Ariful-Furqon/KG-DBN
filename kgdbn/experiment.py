@@ -1,7 +1,6 @@
-"""End-to-end KG-DBN experiment: ontology -> KG embedding -> cases -> models -> metrics.
-
-    python -m kgdbn.experiment --cases data/kasus.csv
-"""
+# End-to-end KG-DBN experiment: ontology -> KG embedding -> cases -> models -> metrics.
+#
+# python -m kgdbn.experiment --cases data/kasus.csv
 
 from __future__ import annotations
 
@@ -26,7 +25,7 @@ DEFAULT_ONTOLOGY = Path(__file__).resolve().parent.parent / "Ontologi" / "Ontolo
 
 
 def accuracy_ceiling(cases: pd.DataFrame) -> float:
-    """Best accuracy any classifier can reach on `cases` given only the symptom set."""
+    # Best accuracy any classifier can reach on `cases` given only the symptom set.
     groups: dict[tuple, Counter] = {}
     for symptoms, label in zip(cases["symptoms"], cases["label"]):
         groups.setdefault(tuple(symptoms), Counter())[label] += 1
@@ -34,7 +33,7 @@ def accuracy_ceiling(cases: pd.DataFrame) -> float:
 
 
 def build_features(train, test, vocabulary, embeddings):
-    """Return {name: (X_train, X_test, visible_type)}."""
+    # Return {name: (X_train, X_test, visible_type)}.
     mh_train, mh_test = multi_hot(train, vocabulary), multi_hot(test, vocabulary)
     scaler = StandardScaler().fit(kg_features(train, embeddings))
     kg_train, kg_test = scaler.transform(kg_features(train, embeddings)), scaler.transform(kg_features(test, embeddings))
@@ -98,7 +97,7 @@ def run(
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description="Eksperimen KG-DBN: ontologi -> embedding KG -> kasus -> model -> metrik.")
     parser.add_argument("--cases", required=True, help="CSV kasus (kolom: gejala, label)")
     parser.add_argument("--ontology", default=str(DEFAULT_ONTOLOGY))
     parser.add_argument("--targets", nargs="+", default=["PenyakitPadi", "HamaPadi"])

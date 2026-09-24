@@ -1,15 +1,14 @@
-"""Diagnosis cases (observed symptoms -> pest/disease) and their feature encodings.
-
-Case file format (CSV, one row per observed case):
-
-    gejala,label
-    Lesi_pada_Daun;Lesi_pada_batang,Blas
-    Daun menguning;Layu,WerengBatangCoklat
-
-`gejala` is a `;`-separated list of `Gejala` individuals and `label` is a
-`PenyakitPadi` or `HamaPadi` individual. Both may be written as the ontology id
-or its rdfs:label; matching ignores case, spaces and underscores.
-"""
+# Diagnosis cases (observed symptoms -> pest/disease) and their feature encodings.
+#
+# Case file format (CSV, one row per observed case):
+#
+#     gejala,label
+#     Lesi_pada_Daun;Lesi_pada_batang,Blas
+#     Daun menguning;Layu,WerengBatangCoklat
+#
+# `gejala` is a `;`-separated list of `Gejala` individuals and `label` is a
+# `PenyakitPadi` or `HamaPadi` individual. Both may be written as the ontology id
+# or its rdfs:label; matching ignores case, spaces and underscores.
 
 from __future__ import annotations
 
@@ -41,11 +40,10 @@ def load_cases(
     label_column: str = "label",
     sep: str = ";",
 ) -> pd.DataFrame:
-    """Read a case CSV and map names to ontology ids.
-
-    Returns columns `symptoms` (sorted list of ids) and `label` (id). Raises
-    ValueError listing every symptom or label not found in the ontology.
-    """
+    # Read a case CSV and map names to ontology ids.
+    #
+    # Returns columns `symptoms` (sorted list of ids) and `label` (id). Raises
+    # ValueError listing every symptom or label not found in the ontology.
     raw = pd.read_csv(path)
     symptoms_of, labels_of = _resolver(kg, ["Gejala"]), _resolver(kg, target_types)
 
@@ -79,7 +77,7 @@ def multi_hot(cases: pd.DataFrame, vocabulary: list[str]) -> np.ndarray:
 
 
 def kg_features(cases: pd.DataFrame, embeddings: dict[str, np.ndarray]) -> np.ndarray:
-    """Mean KG embedding of the observed symptoms."""
+    # Mean KG embedding of the observed symptoms.
     return np.stack([np.mean([embeddings[s] for s in symptoms], axis=0) for symptoms in cases["symptoms"]]).astype(
         np.float32
     )

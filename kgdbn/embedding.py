@@ -1,4 +1,4 @@
-"""node2vec embeddings of the knowledge graph (biased random walks + skip-gram)."""
+# node2vec embeddings of the knowledge graph (biased random walks + skip-gram).
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def _adjacency(kg: KnowledgeGraph, exclude_relations=()) -> tuple[list[str], lis
 
 
 def random_walks(adj, num_walks, walk_length, p, q, rng) -> list[list[int]]:
-    """Second-order node2vec walks on an undirected, unweighted graph."""
+    # Second-order node2vec walks on an undirected, unweighted graph.
     neighbors = [np.array(sorted(a)) for a in adj]
     walks = []
     for _ in range(num_walks):
@@ -73,11 +73,10 @@ def node2vec(
     exclude_relations=(),
     seed: int = 42,
 ) -> dict[str, np.ndarray]:
-    """Return {entity_id: vector}.
-
-    `exclude_relations` drops edges before the walks, e.g. ("memilikiGejala",)
-    for an ablation where symptom->disease links are hidden from the embedding.
-    """
+    # Return {entity_id: vector}.
+    #
+    # `exclude_relations` drops edges before the walks, e.g. ("memilikiGejala",)
+    # for an ablation where symptom->disease links are hidden from the embedding.
     rng = np.random.default_rng(seed)
     torch.manual_seed(seed)
     nodes, adj = _adjacency(kg, exclude_relations)

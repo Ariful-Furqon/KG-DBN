@@ -135,6 +135,21 @@ python -m kgdbn.experiment --cases data/kasus.csv [--targets PenyakitPadi] [--di
 - Metrik: accuracy dan F1-macro. Ada juga **batas atas akurasi**, yaitu akurasi maksimum yang bisa dicapai kalau hanya melihat himpunan gejala.
 - Keluaran: `results/results.csv`.
 
+### 4.6 `neo4j_io.py`: Neo4j (opsional)
+
+```python
+get_driver(uri=None, user=None, password=None, env_path=".env") -> neo4j.Driver
+export_graph(kg, driver, replace=False) -> None
+gds_embeddings(driver, method="fastRP"|"node2vec", dim=32, seed=42,
+               relation_types=None) -> dict[entity_id, np.ndarray(dim)]
+```
+
+- Kredensial dibaca dari `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` (environment atau `.env`), tidak pernah ditulis di kode.
+- Setiap entitas menjadi node berlabel `:KGEntity:<tipe>` dengan properti `id`, `label`, `abstract`. Ada constraint unik pada `KGEntity.id`. Setiap triple menjadi relasi bertipe nama relasinya.
+- `export_graph` memakai `MERGE`, jadi aman dijalankan berulang, tapi **tidak pernah menghapus**. Pakai `replace=True` saat mengekspor versi ontologi baru supaya entitas dan relasi yang sudah dihapus tidak tertinggal. Opsi ini menghapus semua node `:KGEntity`; node lain di database tidak disentuh.
+- `gds_embeddings` hanya memproyeksikan node `:KGEntity` sebagai graf tak berarah (sama dengan `node2vec` di §4.2). `relation_types=None` berarti semua relasi. Keluarannya memenuhi kontrak §4.2, jadi bisa langsung dipakai `kg_features`.
+- Paket `neo4j` opsional dan hanya di-import saat fungsi dipanggil.
+
 ## 5. Keputusan desain
 
 | Keputusan | Alasan |
@@ -152,7 +167,8 @@ python -m kgdbn.experiment --cases data/kasus.csv [--targets PenyakitPadi] [--di
 | `ontology.py` | Selesai. Test lulus (jumlah entitas, triple yang dibuang, profil gejala). |
 | `embedding.py` | Selesai. Test hanya memeriksa bentuk keluaran, belum kualitas embedding. |
 | `cases.py` | Selesai. Test lulus (resolusi nama, error untuk nama tak dikenal). |
-| `dbn.py` | Kode selesai, **perlu tuning**. Test `test_dbn_learns_separable_classes[bernoulli-True]` gagal: RBM Bernoulli pertama hampir tidak belajar (recon error 0.23 → 0.21) dengan `pretrain_lr=0.01`, sehingga fine-tuning macet di akurasi 0.7. Dugaan: `pretrain_lr` terlalu kecil untuk Bernoulli (literatur ~0.1), sedangkan Gaussian butuh lebih kecil. Belum diverifikasi. |
+| `dbn.py` | Selesai. `pretrain_lr=None` (default) memilih 0.1 untuk RBM Bernoulli dan 0.01 untuk Gaussian, sesuai literatur. `history_["pseudo_likelihood"]` berisi satu entri per RBM (sejajar dengan `history_["pretrain"]`), hanya dihitung untuk layer pertama Bernoulli, `None` untuk lainnya. Test data separable lulus untuk seed 0–4. **Catatan:** kegagalan lama (akurasi 0.70) *bukan* disebabkan `pretrain_lr`. Dengan `pretrain_lr=0.01` akurasinya juga 1.0 di seed 0–9, jadi kegagalan itu kemungkinan kebetulan dari angka acak (pretraining hanya 5 epoch). Apakah default baru memang lebih baik belum terbukti dan perlu diuji dengan data kasus nyata. |
+| `neo4j_io.py` | Selesai (P6). Kontrak di §4.6. Test memakai mock; test live di-skip kalau `NEO4J_URI` tidak diset. Belum pernah dijalankan terhadap server Neo4j + GDS sungguhan. |
 | `experiment.py` | Selesai, belum pernah dijalankan dengan data kasus nyata. |
 | Data kasus nyata | **Belum ada.** Ini penghambat utama. |
 

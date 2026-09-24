@@ -1,4 +1,4 @@
-"""KG-DBN: Knowledge Graph embeddings + Deep Belief Network for rice pest/disease diagnosis."""
+# KG-DBN: Knowledge Graph embeddings + Deep Belief Network for rice pest/disease diagnosis.
 
 from .cases import kg_features, load_cases, multi_hot
 from .dbn import DBN, RBM
