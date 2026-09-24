@@ -30,6 +30,7 @@ def test_ontology_loads_and_drops_invalid_triples(kg):
     assert len(kg.of_type("PenyakitPadi")) == 19
     assert len(kg.of_type("HamaPadi")) == 27
     assert len(kg.of_type("Gejala")) == 41
+    assert len(kg.dropped) == 7
     assert ("Lesi_pada_bulir", "memilikiGejala", "Lesi_pada_bulir") in kg.dropped
     assert "Lesi_pada_Daun" in kg.symptom_profiles()["Blas"]
     assert "Tungro" not in kg.symptom_profiles()

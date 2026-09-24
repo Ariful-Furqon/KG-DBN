@@ -164,3 +164,6 @@ data/
 *.csv
 .DS_Store
 Thumbs.db
+
+# Manuscript (not tracked)
+paper/

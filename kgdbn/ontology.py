@@ -88,6 +88,9 @@ def load_ontology(path: str | Path) -> KnowledgeGraph:
 
     triples, dropped = [], []
     for s, p, o in g:
+        # Literals (e.g. an rdfs:label equal to an entity id) are not relations.
+        if not isinstance(o, rdflib.URIRef):
+            continue
         s_id, rel, o_id = local_name(s), local_name(p), local_name(o)
         if s_id not in entities or o_id not in entities:
             continue
