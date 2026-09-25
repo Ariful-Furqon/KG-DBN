@@ -7,6 +7,7 @@ from kgdbn.literature import (
     EXTRACTION_COLUMNS,
     SOURCE_COLUMNS,
     export_cases,
+    load_source_texts,
     prisma_counts,
     resolve_extraction,
     select_cases,
@@ -67,7 +68,7 @@ def test_selection_drops_by_rule(kg):
         row("1", "Lesi_pada_Daun;Lesi_pada_batang", "Blas"),
         row("2", "Lesi_pada_Daun;Lesi_pada_batang", "Blas"),                          # duplicate within S001
         row("3", "Lesi_pada_Daun;Lesi_pada_batang", "Blas", sumber="S002"),           # same case, other source: kept
-        row("4", "Layu", "Blas", jenis="profil_aturan"),
+        row("4", "Layu", "Blas", jenis="vinyet_pakar", sumber="S003"),              # kept
         row("5", "Layu", "Blas", jenis="uji_acak"),
         row("6", "Layu", "Blas", ontologi="ya"),
         row("7", "Layu", "Blas", a2="Lesi_pada_Daun"),
@@ -75,10 +76,11 @@ def test_selection_drops_by_rule(kg):
         row("9", ";".join(busuk), "BusukPelepah"),
     ]), kg)
     kept, reasons = select_cases(resolved, kg)
-    assert list(kept["id_kasus"]) == ["1", "3", "9"]
-    assert list(kept["sama_profil_ontologi"]) == [False, False, True]
+    assert list(kept["id_kasus"]) == ["1", "3", "4", "9"]
+    assert list(kept["sama_profil_ontologi"]) == [False, False, False, True]
+    assert list(kept["duplikat_lintas_sumber"]) == [True, True, False, False]
     assert reasons == {
-        "duplikat dalam sumber": 1, "jenis_kasus=profil_aturan": 1, "jenis_kasus=uji_acak": 1,
+        "duplikat dalam sumber": 1, "jenis_kasus=uji_acak": 1,
         "sumber dipakai ontologi": 1, "perlu adjudikasi (A1 != A2)": 1, "tanpa gejala terpetakan": 1,
     }
 
@@ -121,3 +123,22 @@ def test_prisma_counts():
     assert prisma_counts(sources) == {"ditemukan": 4, "disaring": 3, "layak": 2, "dimasukkan": 1}
     with pytest.raises(ValueError, match="S2"):
         prisma_counts(sources.assign(alasan_eksklusi=["", "", "x", "y"]))
+
+
+def test_verbatim_check_against_source_text(kg, tmp_path):
+    (tmp_path / "s1.txt").write_text(
+        "Tabel 4. G001 Daun pucuk tanaman layu ringan 0,15\nG013 Pada pangkal batang terdapat bekas\ngerekan larva(ulat)",
+        encoding="utf-8",
+    )
+    sources = pd.DataFrame({"id_sumber": ["S001", "S002"], "berkas": ["s1.txt", "hilang.txt"]})
+    texts = load_source_texts(sources, tmp_path)
+    assert set(texts) == {"S001"}
+    raw = pd.DataFrame([
+        # Line break, spacing and punctuation differences are tolerated.
+        {**row("1", "Layu", "Blas"), "gejala_asli": "Daun pucuk tanaman layu;Pada pangkal batang terdapat bekas gerekan larva (ulat)"},
+        {**row("2", "Layu", "Blas"), "gejala_asli": "Daun pucuk tanaman layu;Malai hampa berwarna putih tegak"},
+        {**row("3", "Layu", "Blas", sumber="S002"), "gejala_asli": "Daun pucuk tanaman layu"},
+    ])
+    kept, reasons = select_cases(resolve_extraction(raw, kg), kg, texts)
+    assert list(kept["id_kasus"]) == ["1"]
+    assert reasons == {"gejala_asli tidak ada di berkas sumber": 1, "berkas sumber tidak ada": 1}

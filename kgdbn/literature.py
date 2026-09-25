@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -22,10 +23,14 @@ EXTRACTION_COLUMNS = [
     "lokasi", "tahun_observasi", "gejala_asli", "label_asli", "gejala_a1", "gejala_a2",
     "gejala_final", "gejala_tak_terpetakan", "label", "catatan",
 ]
-SOURCE_COLUMNS = ["id_sumber", "sitasi", "jenis_sumber", "url_doi", "basis_data", "query", "tahap", "alasan_eksklusi"]
+SOURCE_COLUMNS = [
+    "id_sumber", "sitasi", "jenis_sumber", "url_doi", "basis_data", "query", "tahap", "alasan_eksklusi", "berkas",
+]
 
-CASE_TYPES_KEPT = {"lapangan", "uji_pakar", "laporan_penyakit"}
-CASE_TYPES_DROPPED = {"profil_aturan", "uji_acak"}
+# `vinyet_pakar`: a disease profile (rule / knowledge-base row) written by an expert
+# independent of the ontology. Kept, but reported and evaluated apart from observed cases.
+CASE_TYPES_KEPT = {"lapangan", "uji_pakar", "laporan_penyakit", "vinyet_pakar"}
+CASE_TYPES_DROPPED = {"uji_acak"}
 ALLOWED = {
     "jenis_kasus": CASE_TYPES_KEPT | CASE_TYPES_DROPPED,
     "konfirmasi_label": {"laboratorium", "pakar", "penulis", "tidak_ada"},
@@ -44,6 +49,32 @@ def _read(path: str | Path, columns: list[str]) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Kolom hilang di {path}: {missing}")
     return raw.apply(lambda col: col.str.strip())
+
+
+def _plain(text: str) -> str:
+    # Lowercase alphanumerics only, so PDF line breaks, hyphenation and spacing never matter.
+    return re.sub(r"[^0-9a-z]", "", str(text).lower())
+
+
+def load_source_texts(sources: pd.DataFrame, base_dir: str | Path) -> dict[str, str]:
+    # {id_sumber: plain text of `berkas`} for every source whose text file exists.
+    #
+    # `berkas` is the plain-text extraction of the source (e.g. `pdftotext`),
+    # relative to `base_dir` (the folder of sumber.csv).
+    texts = {}
+    for sid, berkas in zip(sources["id_sumber"], sources["berkas"]):
+        path = Path(base_dir) / berkas
+        if berkas and path.is_file():
+            texts[sid] = _plain(path.read_text(encoding="utf-8", errors="ignore"))
+    return texts
+
+
+def missing_verbatim(row: dict, texts: dict[str, str]) -> list[str] | None:
+    # Items of `gejala_asli` not found in the source text; None when the source has no text.
+    text = texts.get(row["id_sumber"])
+    if text is None:
+        return None
+    return [g for g in _split(row["gejala_asli"]) if _plain(g) not in text]
 
 
 def resolve_extraction(raw: pd.DataFrame, kg: KnowledgeGraph, target_types=("PenyakitPadi", "HamaPadi")) -> pd.DataFrame:
@@ -106,11 +137,19 @@ def symptom_kappa(resolved: pd.DataFrame, vocabulary: list[str]) -> tuple[float 
     return float(cohen_kappa_score(matrix("a1"), matrix("a2"))), len(both)
 
 
-def select_cases(resolved: pd.DataFrame, kg: KnowledgeGraph) -> tuple[pd.DataFrame, Counter]:
+def select_cases(
+    resolved: pd.DataFrame, kg: KnowledgeGraph, texts: dict[str, str] | None = None
+) -> tuple[pd.DataFrame, Counter]:
     # Apply the selection rules of DATA_PROTOCOL.md §3.
     #
+    # With `texts` (from load_source_texts) every `gejala_asli` item must appear
+    # verbatim in its source text, otherwise the row is dropped.
+    #
     # Returns (kept cases, Counter of exclusion reasons). The first matching
-    # reason wins, so each dropped case is counted once.
+    # reason wins, so each dropped case is counted once. Kept cases are flagged
+    # `sama_profil_ontologi` (identical to the ontology profile of their label) and
+    # `duplikat_lintas_sumber` (same symptoms and label in another source, e.g. a
+    # rule table copied between theses); both are reported, not dropped.
     profiles = {t: sorted(s) for t, s in kg.symptom_profiles().items()}
     reasons, kept, seen = Counter(), [], set()
     for row in resolved.to_dict("records"):
@@ -118,6 +157,10 @@ def select_cases(resolved: pd.DataFrame, kg: KnowledgeGraph) -> tuple[pd.DataFra
             reason = f"jenis_kasus={row['jenis_kasus']}"
         elif row["dipakai_ontologi"] == "ya":
             reason = "sumber dipakai ontologi"
+        elif texts is not None and missing_verbatim(row, texts) is None:
+            reason = "berkas sumber tidak ada"
+        elif texts is not None and missing_verbatim(row, texts):
+            reason = "gejala_asli tidak ada di berkas sumber"
         elif row["final"] is None:
             reason = "perlu adjudikasi (A1 != A2)"
         elif not row["final"]:
@@ -129,7 +172,11 @@ def select_cases(resolved: pd.DataFrame, kg: KnowledgeGraph) -> tuple[pd.DataFra
             kept.append({**row, "sama_profil_ontologi": row["final"] == profiles.get(row["label_id"])})
             continue
         reasons[reason] += 1
-    return pd.DataFrame(kept), reasons
+    kept = pd.DataFrame(kept)
+    if len(kept):
+        key = kept["final"].map(tuple) + kept["label_id"].map(lambda l: (l,))
+        kept["duplikat_lintas_sumber"] = key.map(kept.groupby(key)["id_sumber"].nunique()) > 1
+    return kept, reasons
 
 
 def export_cases(kept: pd.DataFrame, path: str | Path) -> None:
@@ -142,6 +189,7 @@ def export_cases(kept: pd.DataFrame, path: str | Path) -> None:
         "jenis_kasus": kept["jenis_kasus"],
         "konfirmasi_label": kept["konfirmasi_label"],
         "sama_profil_ontologi": kept["sama_profil_ontologi"],
+        "duplikat_lintas_sumber": kept["duplikat_lintas_sumber"],
     })
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(path, index=False)
@@ -159,14 +207,23 @@ def prisma_counts(sources: pd.DataFrame) -> dict[str, int]:
     return {stage: int((rank >= i).sum()) for i, stage in enumerate(STAGES)}
 
 
-def report(resolved, kept, reasons, kappa, sources=None) -> str:
+def report(resolved, kept, reasons, kappa, sources=None, texts=None) -> str:
     lines = [f"Kasus diekstraksi: {len(resolved)}", f"Kasus dipakai: {len(kept)}"]
     lines += [f"  dibuang ({r}): {n}" for r, n in reasons.most_common()]
+    if texts is not None:
+        unverified = [(row["id_kasus"], missing_verbatim(row, texts)) for row in resolved.to_dict("records")]
+        unverified = [(i, m) for i, m in unverified if m]
+        if unverified:
+            lines.append("Gejala tidak verbatim (maks. 15 kasus):")
+            lines += [f"  {i}: {m}" for i, m in unverified[:15]]
     k, n = kappa
     lines.append(f"Kappa A1/A2: {k:.3f} ({n} kasus)" if k is not None else "Kappa A1/A2: - (belum ada anotasi A2)")
     if len(kept):
         lines.append(f"Sumber terwakili: {kept['id_sumber'].nunique()}")
+        lines.append("Per jenis_kasus:")
+        lines += [f"  {t}: {n}" for t, n in Counter(kept["jenis_kasus"]).most_common()]
         lines.append(f"Sama persis dengan profil ontologi: {int(kept['sama_profil_ontologi'].sum())}")
+        lines.append(f"Duplikat lintas sumber: {int(kept['duplikat_lintas_sumber'].sum())}")
         lines.append("Distribusi label:")
         lines += [f"  {label}: {n}" for label, n in Counter(kept["label_id"]).most_common()]
     unmapped = Counter(t.lower() for text in resolved["gejala_tak_terpetakan"] for t in _split(text))
@@ -191,9 +248,14 @@ def main():
 
     kg = load_ontology(args.ontology)
     resolved = resolve_extraction(_read(args.ekstraksi, EXTRACTION_COLUMNS), kg)
-    kept, reasons = select_cases(resolved, kg)
-    sources = _read(args.sumber, SOURCE_COLUMNS) if args.sumber else None
-    print(report(resolved, kept, reasons, symptom_kappa(resolved, kg.of_type("Gejala")), sources))
+    sources, texts = None, None
+    if args.sumber:
+        sources = _read(args.sumber, SOURCE_COLUMNS)
+        texts = load_source_texts(sources, Path(args.sumber).parent)
+    else:
+        print("Peringatan: tanpa --sumber, gejala_asli tidak diperiksa terhadap teks sumber.")
+    kept, reasons = select_cases(resolved, kg, texts)
+    print(report(resolved, kept, reasons, symptom_kappa(resolved, kg.of_type("Gejala")), sources, texts))
     if len(kept):
         export_cases(kept, args.out)
         print(f"Ditulis: {args.out}")

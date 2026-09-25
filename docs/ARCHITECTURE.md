@@ -158,7 +158,8 @@ gds_embeddings(driver, method="fastRP"|"node2vec", dim=32, seed=42,
 ```python
 resolve_extraction(raw, kg)          -> DataFrame (+ a1, a2, final: list[gejala_id] | None, label_id)
 symptom_kappa(resolved, vocabulary)  -> (kappa | None, n_kasus)   # A1 vs A2, matriks kasus × Gejala
-select_cases(resolved, kg)           -> (DataFrame kasus dipakai, Counter alasan eksklusi)
+load_source_texts(sources, base_dir) -> {id_sumber: teks polos dari kolom berkas}
+select_cases(resolved, kg, texts)    -> (DataFrame kasus dipakai, Counter alasan eksklusi)   # texts: cek verbatim
 export_cases(kept, path)             # format §4.3 + kolom jejak (id_kasus, id_sumber, ...)
 prisma_counts(sources)               -> {tahap: jumlah sumber}
 ```
@@ -186,7 +187,7 @@ prisma_counts(sources)               -> {tahap: jumlah sumber}
 | `dbn.py` | Selesai. `pretrain_lr=None` (default) memilih 0.1 untuk RBM Bernoulli dan 0.01 untuk Gaussian, sesuai literatur. `history_["pseudo_likelihood"]` berisi satu entri per RBM (sejajar dengan `history_["pretrain"]`), hanya dihitung untuk layer pertama Bernoulli, `None` untuk lainnya. Test data separable lulus untuk seed 0–4. **Catatan:** kegagalan lama (akurasi 0.70) *bukan* disebabkan `pretrain_lr`. Dengan `pretrain_lr=0.01` akurasinya juga 1.0 di seed 0–9, jadi kegagalan itu kemungkinan kebetulan dari angka acak (pretraining hanya 5 epoch). Apakah default baru memang lebih baik belum terbukti dan perlu diuji dengan data kasus nyata. |
 | `neo4j_io.py` | Selesai (P6). Kontrak di §4.6. Test memakai mock; test live di-skip kalau `NEO4J_URI` tidak diset. Belum pernah dijalankan terhadap server Neo4j + GDS sungguhan. |
 | `experiment.py` | Selesai, belum pernah dijalankan dengan data kasus nyata. |
-| `literature.py` | Selesai (D0 di [DATA_PROTOCOL.md](DATA_PROTOCOL.md#2-roadmap)). Test lulus (validasi, aturan seleksi, kappa, round-trip ke `load_cases`, PRISMA). |
+| `literature.py` | Selesai (D0 di [DATA_PROTOCOL.md](DATA_PROTOCOL.md#2-roadmap)). Test lulus (validasi, aturan seleksi termasuk `vinyet_pakar` dan duplikat lintas sumber, kappa, round-trip ke `load_cases`, PRISMA). |
 | Data kasus nyata | **Belum ada.** Ini penghambat utama. Protokol dan roadmap D0–D7 ada di [DATA_PROTOCOL.md](DATA_PROTOCOL.md). |
 
 ## 7. Paket kerja
