@@ -47,10 +47,13 @@ KG-DBN/
 │   ├── ontology.py     # RDF → KnowledgeGraph (+ validasi skema)
 │   ├── embedding.py    # node2vec (random walk + skip-gram, PyTorch)
 │   ├── cases.py        # loader CSV kasus + encoding fitur
+│   ├── literature.py   # lembar ekstraksi literatur → kasus.csv
 │   ├── dbn.py          # RBM + DBN
 │   └── experiment.py   # orkestrasi eksperimen & CLI
 ├── tests/test_pipeline.py
 ├── docs/ARCHITECTURE.md
+├── docs/DATA_PROTOCOL.md  # protokol pengumpulan data kasus (P2)
+├── templates/          # template CSV ekstraksi & sumber (di-commit)
 ├── data/               # data kasus (di-.gitignore, tidak masuk repo)
 ├── results/            # keluaran eksperimen
 └── KG-DBN.ipynb        # notebook eksplorasi, hanya memanggil kgdbn
@@ -150,6 +153,19 @@ gds_embeddings(driver, method="fastRP"|"node2vec", dim=32, seed=42,
 - `gds_embeddings` hanya memproyeksikan node `:KGEntity` sebagai graf tak berarah (sama dengan `node2vec` di §4.2). `relation_types=None` berarti semua relasi. Keluarannya memenuhi kontrak §4.2, jadi bisa langsung dipakai `kg_features`.
 - Paket `neo4j` opsional dan hanya di-import saat fungsi dipanggil.
 
+### 4.7 `literature.py`: lembar ekstraksi → kasus
+
+```python
+resolve_extraction(raw, kg)          -> DataFrame (+ a1, a2, final: list[gejala_id] | None, label_id)
+symptom_kappa(resolved, vocabulary)  -> (kappa | None, n_kasus)   # A1 vs A2, matriks kasus × Gejala
+select_cases(resolved, kg)           -> (DataFrame kasus dipakai, Counter alasan eksklusi)
+export_cases(kept, path)             # format §4.3 + kolom jejak (id_kasus, id_sumber, ...)
+prisma_counts(sources)               -> {tahap: jumlah sumber}
+```
+
+- Kolom dan aturan seleksi dijelaskan di [DATA_PROTOCOL.md](DATA_PROTOCOL.md). Nilai tidak valid langsung `ValueError` dengan nomor baris.
+- `kasus.csv` hasil ekspor punya `id_sumber`, supaya evaluasi (P5) bisa memakai split per sumber.
+
 ## 5. Keputusan desain
 
 | Keputusan | Alasan |
@@ -170,7 +186,8 @@ gds_embeddings(driver, method="fastRP"|"node2vec", dim=32, seed=42,
 | `dbn.py` | Selesai. `pretrain_lr=None` (default) memilih 0.1 untuk RBM Bernoulli dan 0.01 untuk Gaussian, sesuai literatur. `history_["pseudo_likelihood"]` berisi satu entri per RBM (sejajar dengan `history_["pretrain"]`), hanya dihitung untuk layer pertama Bernoulli, `None` untuk lainnya. Test data separable lulus untuk seed 0–4. **Catatan:** kegagalan lama (akurasi 0.70) *bukan* disebabkan `pretrain_lr`. Dengan `pretrain_lr=0.01` akurasinya juga 1.0 di seed 0–9, jadi kegagalan itu kemungkinan kebetulan dari angka acak (pretraining hanya 5 epoch). Apakah default baru memang lebih baik belum terbukti dan perlu diuji dengan data kasus nyata. |
 | `neo4j_io.py` | Selesai (P6). Kontrak di §4.6. Test memakai mock; test live di-skip kalau `NEO4J_URI` tidak diset. Belum pernah dijalankan terhadap server Neo4j + GDS sungguhan. |
 | `experiment.py` | Selesai, belum pernah dijalankan dengan data kasus nyata. |
-| Data kasus nyata | **Belum ada.** Ini penghambat utama. |
+| `literature.py` | Selesai (D0 di [DATA_PROTOCOL.md](DATA_PROTOCOL.md#2-roadmap)). Test lulus (validasi, aturan seleksi, kappa, round-trip ke `load_cases`, PRISMA). |
+| Data kasus nyata | **Belum ada.** Ini penghambat utama. Protokol dan roadmap D0–D7 ada di [DATA_PROTOCOL.md](DATA_PROTOCOL.md). |
 
 ## 7. Paket kerja
 
@@ -179,7 +196,7 @@ Setiap paket punya batas file yang jelas supaya bisa dikerjakan paralel.
 | # | Paket | File yang disentuh | Bergantung pada |
 |---|---|---|---|
 | P1 | **Ontologi v1.2**: perbaiki domain property, 7 triple yang salah, tambah gejala untuk `Tungro`, `JelagaPalsu`, `WalangSangit`, `UlatTandukHijau`, `Meloidogyne_spp.`, dan bedakan profil yang identik (`Thrips`/`TungauMalaiPadi`, `BelalangSawah`/`WerengPunggungPutih`) | `Ontologi/*_v1.2.rdf` (file baru) | — (butuh validasi pakar) |
-| P2 | **Data kasus nyata**: kumpulkan dari log sistem pakar / penyuluh / literatur, lalu simpan dalam format §4.3 | `data/kasus.csv` | P1 untuk penamaan gejala |
+| P2 | **Data kasus nyata**: literatur + lapangan, rinciannya di [DATA_PROTOCOL.md](DATA_PROTOCOL.md) | `data/ekstraksi_kasus.csv`, `data/sumber.csv` → `data/kasus.csv` | P1 untuk penamaan gejala |
 | P3 | **Tuning RBM/DBN**: perbaiki test Bernoulli yang gagal, atur `pretrain_lr` terpisah per tipe visible, tambah monitoring (recon error, pseudo-likelihood) | `kgdbn/dbn.py`, `tests/` | — |
 | P4 | **Embedding alternatif**: TransE/RotatE (PyKEEN) atau embedding teks `abstract` (IndoBERT), dengan kontrak keluaran §4.2 | `kgdbn/embedding.py` (fungsi baru) | — |
 | P5 | **Evaluasi**: k-fold CV, beberapa seed, confusion matrix, uji signifikansi, ablation `exclude_relations` | `kgdbn/experiment.py` | P2 untuk hasil nyata |

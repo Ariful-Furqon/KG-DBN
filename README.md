@@ -15,10 +15,13 @@ KG-DBN/
 │   ├── ontology.py     # RDF → knowledge graph
 │   ├── embedding.py    # node2vec
 │   ├── cases.py        # loader data kasus + fitur
+│   ├── literature.py   # ekstraksi kasus literatur → kasus.csv
 │   ├── dbn.py          # RBM + Deep Belief Network
 │   └── experiment.py   # eksperimen & CLI
 ├── tests/              # pytest
 ├── docs/ARCHITECTURE.md
+├── docs/DATA_PROTOCOL.md   # protokol & roadmap data kasus
+├── templates/          # template CSV ekstraksi
 ├── KG-DBN.ipynb        # notebook eksplorasi
 └── requirements.txt
 ```
@@ -89,7 +92,10 @@ Daun menguning;Layu,WerengBatangCoklat
 
 `gejala` berisi daftar individu `Gejala` yang dipisah `;`. `label` berisi individu `PenyakitPadi` atau `HamaPadi`. Keduanya boleh ditulis sebagai id ontologi atau `rdfs:label`.
 
+Kasus dari literatur diekstraksi dulu ke `templates/ekstraksi_kasus.csv`, lalu dikonversi. Lihat [docs/DATA_PROTOCOL.md](docs/DATA_PROTOCOL.md).
+
 ```bash
+python -m kgdbn.literature --ekstraksi data/ekstraksi_kasus.csv --sumber data/sumber.csv --out data/kasus.csv
 python -m kgdbn.experiment --cases data/kasus.csv
 python -m pytest tests
 ```

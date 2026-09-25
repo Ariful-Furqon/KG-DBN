@@ -162,6 +162,7 @@ cython_debug/
 # Project
 data/
 *.csv
+!templates/*.csv
 .DS_Store
 Thumbs.db
 
