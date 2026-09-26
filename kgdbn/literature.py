@@ -2,7 +2,8 @@
 #
 # python -m kgdbn.literature --ekstraksi data/ekstraksi_kasus.csv --sumber data/sumber.csv --out data/kasus.csv
 #
-# The extraction sheet and the selection rules are described in docs/DATA_PROTOCOL.md.
+# The extraction sheet columns follow templates/ekstraksi_kasus.csv and
+# templates/sumber.csv; the selection rules are in select_cases.
 
 from __future__ import annotations
 
@@ -140,7 +141,10 @@ def symptom_kappa(resolved: pd.DataFrame, vocabulary: list[str]) -> tuple[float 
 def select_cases(
     resolved: pd.DataFrame, kg: KnowledgeGraph, texts: dict[str, str] | None = None
 ) -> tuple[pd.DataFrame, Counter]:
-    # Apply the selection rules of DATA_PROTOCOL.md §3.
+    # Apply the selection rules: drop cases of a dropped `jenis_kasus` (`uji_acak`),
+    # sources used to build the ontology, rows whose `gejala_asli` is not verbatim
+    # in the source, rows awaiting adjudication or without mapped symptoms, and
+    # duplicates within a source.
     #
     # With `texts` (from load_source_texts) every `gejala_asli` item must appear
     # verbatim in its source text, otherwise the row is dropped.

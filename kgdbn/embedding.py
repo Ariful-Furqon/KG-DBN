@@ -75,8 +75,10 @@ def node2vec(
 ) -> dict[str, np.ndarray]:
     # Return {entity_id: vector}.
     #
-    # `exclude_relations` drops edges before the walks, e.g. ("memilikiGejala",)
-    # for an ablation where symptom->disease links are hidden from the embedding.
+    # `exclude_relations` drops edges before the walks, e.g. every relation except
+    # "memilikiGejala" for the symptom-only ablation (see analysis.VARIANTS).
+    # Dropping "memilikiGejala" itself isolates every symptom, leaving its vector
+    # at the random initialisation.
     rng = np.random.default_rng(seed)
     torch.manual_seed(seed)
     nodes, adj = _adjacency(kg, exclude_relations)
